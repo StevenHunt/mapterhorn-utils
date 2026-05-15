@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mapterhorn — Coverage Resolution</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600&display=swap"
+        rel="stylesheet" />
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #0a0c0f;
+            --panel: #111418;
+            --border: #1e2328;
+            --text: #e8eaed;
+            --muted: #6b7280;
+            --accent: #00ff9d;
+
+            /* resolution colors */
+            --c-1m: #00ff9d;
+            --c-5m: #00d4ff;
+            --c-10m: #4f9fff;
+            --c-20m: #a855f7;
+            --c-30m: #f97316;
+            --c-other: #ef4444;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #map {
+            position: absolute;
+            inset: 0;
+        }
+
+        /* ── Header ── */
+        #header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        #header .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent);
+            flex-shrink: 0;
+        }
+
+        #header h1 {
+            font-family: 'DM Mono', monospace;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            color: var(--text);
+            text-transform: uppercase;
+        }
+
+        #header span {
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            margin-left: 4px;
+        }
+
+        /* ── Legend ── */
+        #legend {
+            position: absolute;
+            bottom: 36px;
+            left: 20px;
+            z-index: 10;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            min-width: 170px;
+        }
+
+        #legend h2 {
+            font-family: 'DM Mono', monospace;
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        .legend-row {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            margin-bottom: 7px;
+            cursor: pointer;
+            opacity: 1;
+            transition: opacity 0.2s;
+        }
+
+        .legend-row:hover {
+            opacity: 0.7;
+        }
+
+        .legend-swatch {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+
+        .legend-label {
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            color: var(--text);
+        }
+
+        .legend-count {
+            font-family: 'DM Mono', monospace;
+            font-size: 10px;
+            color: var(--muted);
+            margin-left: auto;
+        }
+
+        /* ── Popup ── */
+        .mapboxgl-popup-content {
+            background: var(--panel) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 8px !important;
+            padding: 12px 14px !important;
+            color: var(--text) !important;
+            font-family: 'DM Sans', sans-serif !important;
+            font-size: 13px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6) !important;
+            min-width: 180px;
+        }
+
+        .mapboxgl-popup-tip {
+            display: none !important;
+        }
+
+        .mapboxgl-popup-close-button {
+            color: var(--muted) !important;
+            font-size: 16px !important;
+            right: 8px !important;
+            top: 6px !important;
+        }
+
+        .popup-source {
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+
+        .popup-res {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .popup-res strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        /* ── Stats ── */
+        #stats {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 18px;
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            display: none;
+        }
+
+        #stats .stat {
+            margin-bottom: 4px;
+        }
+
+        #stats .stat strong {
+            color: var(--text);
+        }
+
+        /* ── Loading ── */
+        #loading {
+            position: absolute;
+            inset: 0;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            gap: 16px;
+            transition: opacity 0.4s;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #loading p {
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            color: var(--muted);
+            letter-spacing: 0.06em;
+        }
+
+        /* mapbox controls theme */
+        .mapboxgl-ctrl-group {
+            background: var(--panel) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 8px !important;
+        }
+
+        .mapboxgl-ctrl-group button {
+            background: transparent !important;
+            border-bottom-color: var(--border) !important;
+        }
+
+        .mapboxgl-ctrl-icon {
+            filter: invert(0.6);
+        }
+
+        .mapboxgl-ctrl-attrib {
+            background: rgba(10, 12, 15, 0.7) !important;
+            color: var(--muted) !important;
+            font-size: 10px !important;
+        }
+
+        .mapboxgl-ctrl-attrib a {
+            color: var(--muted) !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Loading coverage data...</p>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="header">
+        <div class="dot"></div>
+        <h1>Mapterhorn Coverage<span>/ resolution by source</span></h1>
+    </div>
+
+    <div id="legend">
+        <h2>Resolution</h2>
+        <div class="legend-row" data-res="1">
+            <div class="legend-swatch" style="background:var(--c-1m)"></div>
+            <span class="legend-label">≤ 1 m</span>
+            <span class="legend-count" id="count-1"></span>
+        </div>
+        <div class="legend-row" data-res="5">
+            <div class="legend-swatch" style="background:var(--c-5m)"></div>
+            <span class="legend-label">≤ 5 m</span>
+            <span class="legend-count" id="count-5"></span>
+        </div>
+        <div class="legend-row" data-res="10">
+            <div class="legend-swatch" style="background:var(--c-10m)"></div>
+            <span class="legend-label">≤ 10 m</span>
+            <span class="legend-count" id="count-10"></span>
+        </div>
+        <div class="legend-row" data-res="20">
+            <div class="legend-swatch" style="background:var(--c-20m)"></div>
+            <span class="legend-label">≤ 20 m</span>
+            <span class="legend-count" id="count-20"></span>
+        </div>
+        <div class="legend-row" data-res="30">
+            <div class="legend-swatch" style="background:var(--c-30m)"></div>
+            <span class="legend-label">≤ 30 m</span>
+            <span class="legend-count" id="count-30"></span>
+        </div>
+        <div class="legend-row" data-res="other">
+            <div class="legend-swatch" style="background:var(--c-other)"></div>
+            <span class="legend-label">&gt; 30 m</span>
+            <span class="legend-count" id="count-other"></span>
+        </div>
+    </div>
+
+    <div id="stats">
+        <div class="stat">Sources: <strong id="stat-sources">—</strong></div>
+        <div class="stat">Features: <strong id="stat-features">—</strong></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+    <script>
+        mapboxgl.accessToken = MAPBOX_TOKEN;
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/dark-v11',
+            center: [0, 20],
+            zoom: 1.8,
+            projection: 'globe',
+        });
+
+        map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
+
+        // Color expression based on resolution_m
+        const resolutionColor = [
+            'case',
+            ['<=', ['get', 'resolution_m'], 1], '#00ff9d',
+            ['<=', ['get', 'resolution_m'], 5], '#00d4ff',
+            ['<=', ['get', 'resolution_m'], 10], '#4f9fff',
+            ['<=', ['get', 'resolution_m'], 20], '#a855f7',
+            ['<=', ['get', 'resolution_m'], 30], '#f97316',
+            '#ef4444'
+        ];
+
+        map.on('load', async () => {
+            // Atmosphere on globe
+            map.setFog({
+                color: 'rgb(10, 12, 15)',
+                'high-color': 'rgb(20, 30, 50)',
+                'horizon-blend': 0.02,
+                'space-color': 'rgb(5, 5, 10)',
+                'star-intensity': 0.6
+            });
+
+            // Load the GeoJSON
+            let geojson;
+            try {
+                const res = await fetch('source_geometries.geojson');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                geojson = await res.json();
+            } catch (e) {
+                document.querySelector('#loading p').textContent = 'Error: could not load source_geometries.geojson';
+                console.error(e);
+                return;
+            }
+
+            // Update stats
+            const sources = new Set(geojson.features.map(f => f.properties.source));
+            document.getElementById('stat-sources').textContent = sources.size;
+            document.getElementById('stat-features').textContent = geojson.features.length;
+            document.getElementById('stats').style.display = 'block';
+
+            // Count per resolution bucket
+            const counts = { 1: 0, 5: 0, 10: 0, 20: 0, 30: 0, other: 0 };
+            geojson.features.forEach(f => {
+                const r = f.properties.resolution_m;
+                if (r <= 1) counts[1]++;
+                else if (r <= 5) counts[5]++;
+                else if (r <= 10) counts[10]++;
+                else if (r <= 20) counts[20]++;
+                else if (r <= 30) counts[30]++;
+                else counts.other++;
+            });
+            Object.entries(counts).forEach(([k, v]) => {
+                const el = document.getElementById(`count-${k}`);
+                if (el) el.textContent = v || '';
+            });
+
+            map.addSource('coverage', { type: 'geojson', data: geojson });
+
+            map.addLayer({
+                id: 'coverage-fill',
+                type: 'fill',
+                source: 'coverage',
+                paint: {
+                    'fill-color': resolutionColor,
+                    'fill-opacity': 0.45,
+                }
+            });
+
+            map.addLayer({
+                id: 'coverage-fill-hover',
+                type: 'fill',
+                source: 'coverage',
+                paint: {
+                    'fill-color': resolutionColor,
+                    'fill-opacity': [
+                        'case',
+                        ['boolean', ['feature-state', 'hover'], false],
+                        0.75,
+                        0
+                    ]
+                }
+            });
+
+            map.addLayer({
+                id: 'coverage-line',
+                type: 'line',
+                source: 'coverage',
+                paint: {
+                    'line-color': resolutionColor,
+                    'line-width': 0.6,
+                    'line-opacity': 0.5,
+                }
+            });
+
+            // Hide loading screen
+            document.getElementById('loading').classList.add('hidden');
+
+            // Hover state
+            let hoveredId = null;
+            map.on('mousemove', 'coverage-fill', e => {
+                map.getCanvas().style.cursor = 'pointer';
+                if (e.features.length) {
+                    if (hoveredId !== null) {
+                        map.setFeatureState({ source: 'coverage', id: hoveredId }, { hover: false });
+                    }
+                    hoveredId = e.features[0].id;
+                    map.setFeatureState({ source: 'coverage', id: hoveredId }, { hover: true });
+                }
+            });
+
+            map.on('mouseleave', 'coverage-fill', () => {
+                map.getCanvas().style.cursor = '';
+                if (hoveredId !== null) {
+                    map.setFeatureState({ source: 'coverage', id: hoveredId }, { hover: false });
+                }
+                hoveredId = null;
+            });
+
+            // Click popup
+            map.on('click', 'coverage-fill', e => {
+                const props = e.features[0].properties;
+                new mapboxgl.Popup({ closeButton: true, maxWidth: '240px' })
+                    .setLngLat(e.lngLat)
+                    .setHTML(`
+            <div class="popup-source">${props.source}</div>
+            <div class="popup-res">Resolution: <strong>${props.resolution_m} m</strong></div>
+          `)
+                    .addTo(map);
+            });
+
+            // Legend filter toggle
+            document.querySelectorAll('.legend-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const active = row.classList.toggle('active');
+                    // Could add per-resolution filter here if desired
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>
