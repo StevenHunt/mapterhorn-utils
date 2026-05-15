@@ -39,7 +39,9 @@ source_geometries.json  ──►  convert.py  ──►  source_geometries.geoj
 
 ---
 
-## Visualisation
+## Visualisation of resolution 
+
+View on Map: https://stevenhunt.github.io/mapterhorn-utils/
 
 `index.html` renders `source_geometries.geojson` as a Mapbox GL JS map, colouring coverage polygons by resolution (1 m → 30 m+). Requires a Mapbox token in `config.js`.
 
